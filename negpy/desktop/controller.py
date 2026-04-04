@@ -646,12 +646,14 @@ class AppController(QObject):
             Q_ARG(list, tasks),
         )
 
-    def _on_render_finished(self, _result: Any, _metrics: Dict[str, Any]) -> None:
+    def _on_render_finished(self, _result: Any, metrics: Dict[str, Any]) -> None:
         self._is_rendering = False
 
         should_update_thumb = not self._first_render_done
         self._first_render_done = True
 
+        with self.state.metrics_lock:
+            self.state.last_metrics.update(metrics)
         self.set_status("READY", 1000)
         self.image_updated.emit()
 
