@@ -1,31 +1,11 @@
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QGridLayout, QLabel, QPushButton, QFrame
 from PyQt6.QtCore import Qt
 from negpy.desktop.view.styles.theme import THEME
-
-
-# (category, key_display, description)
-SHORTCUT_TABLE = [
-    ("Navigation", "← / →", "Previous / Next file"),
-    ("Geometry", "[ / ]", "Rotate 90° CW / CCW"),
-    ("Geometry", "H", "Flip horizontal"),
-    ("Geometry", "V", "Flip vertical"),
-    ("Tools", "Shift+W", "Toggle WB picker"),
-    ("Tools", "Shift+C", "Toggle manual crop"),
-    ("Tools", "Shift+D", "Toggle heal tool"),
-    ("Density", "Q / A", "Density +0.01 / −0.01"),
-    ("Grade", "W / S", "Grade +0.01 / −0.01"),
-    ("Magenta", "E / D", "Magenta +0.01 / −0.01"),
-    ("Yellow", "R / F", "Yellow +0.01 / −0.01"),
-    ("Crop", "X / Z", "Crop offset +1 / −1"),
-    ("Actions", "Ctrl+E", "Export"),
-    ("Actions", "Ctrl+C / Ctrl+V", "Copy / Paste settings"),
-    ("Actions", "Ctrl+Z / Ctrl+Y", "Undo / Redo"),
-    ("Help", "?", "Show this overlay"),
-]
+from negpy.desktop.view.shortcut_registry import REGISTRY
 
 
 class ShortcutsOverlay(QDialog):
-    """Modal keyboard shortcut reference, opened with '?'."""
+    """Modal keyboard shortcut reference, opened with '?'. Reads from REGISTRY."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -56,39 +36,45 @@ class ShortcutsOverlay(QDialog):
         grid.setColumnMinimumWidth(1, 160)
         grid.setColumnMinimumWidth(2, 260)
 
+        # Group registry entries by category, preserving insertion order
+        categories: dict[str, list] = {}
+        for action_id, entry in REGISTRY.items():
+            categories.setdefault(entry.category, []).append(entry)
+
         prev_category = None
         row = 0
-        for category, key, desc in SHORTCUT_TABLE:
-            if category != prev_category:
-                if prev_category is not None:
-                    sep = QFrame()
-                    sep.setFrameShape(QFrame.Shape.HLine)
-                    sep.setStyleSheet(f"background-color: {THEME.border_primary}; border: none; margin: 4px 0;")
-                    sep.setFixedHeight(1)
-                    grid.addWidget(sep, row, 0, 1, 3)
-                    row += 1
-                cat_lbl = QLabel(category)
-                cat_lbl.setStyleSheet(f"color: {THEME.text_secondary}; font-size: 10px; font-weight: bold; padding: 6px 0 2px 0;")
-                grid.addWidget(cat_lbl, row, 0, 1, 3)
+        for category, entries in categories.items():
+            if prev_category is not None:
+                sep = QFrame()
+                sep.setFrameShape(QFrame.Shape.HLine)
+                sep.setStyleSheet(f"background-color: {THEME.border_primary}; border: none; margin: 4px 0;")
+                sep.setFixedHeight(1)
+                grid.addWidget(sep, row, 0, 1, 3)
                 row += 1
-                prev_category = category
 
-            key_lbl = QLabel(key)
-            key_lbl.setStyleSheet(f"""
-                color: {THEME.text_primary};
-                background-color: {THEME.bg_header};
-                border: 1px solid {THEME.border_primary};
-                border-radius: 3px;
-                font-family: monospace;
-                font-size: 11px;
-                padding: 1px 5px;
-            """)
-            key_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            desc_lbl = QLabel(desc)
-            desc_lbl.setStyleSheet(f"color: {THEME.text_secondary}; font-size: 12px; padding-left: 8px;")
-            grid.addWidget(key_lbl, row, 1)
-            grid.addWidget(desc_lbl, row, 2)
+            cat_lbl = QLabel(category)
+            cat_lbl.setStyleSheet(f"color: {THEME.text_secondary}; font-size: 10px; font-weight: bold; padding: 6px 0 2px 0;")
+            grid.addWidget(cat_lbl, row, 0, 1, 3)
             row += 1
+            prev_category = category
+
+            for entry in entries:
+                key_lbl = QLabel(entry.key)
+                key_lbl.setStyleSheet(f"""
+                    color: {THEME.text_primary};
+                    background-color: {THEME.bg_header};
+                    border: 1px solid {THEME.border_primary};
+                    border-radius: 3px;
+                    font-family: monospace;
+                    font-size: 11px;
+                    padding: 1px 5px;
+                """)
+                key_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                desc_lbl = QLabel(entry.description)
+                desc_lbl.setStyleSheet(f"color: {THEME.text_secondary}; font-size: 12px; padding-left: 8px;")
+                grid.addWidget(key_lbl, row, 1)
+                grid.addWidget(desc_lbl, row, 2)
+                row += 1
 
         root.addLayout(grid)
         root.addSpacing(16)

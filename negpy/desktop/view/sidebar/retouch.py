@@ -4,6 +4,7 @@ from negpy.desktop.view.widgets.sliders import CompactSlider
 from negpy.desktop.view.sidebar.base import BaseSidebar
 from negpy.desktop.session import ToolMode
 from negpy.desktop.view.styles.theme import THEME
+from negpy.desktop.view.shortcut_registry import tooltip_with_shortcut
 
 
 class RetouchSidebar(BaseSidebar):
@@ -33,6 +34,7 @@ class RetouchSidebar(BaseSidebar):
         self.pick_dust_btn = QPushButton(" Heal Tool")
         self.pick_dust_btn.setCheckable(True)
         self.pick_dust_btn.setIcon(qta.icon("fa5s.eye-dropper", color=THEME.text_primary))
+        self.pick_dust_btn.setToolTip(tooltip_with_shortcut("Toggle heal tool", "pick_dust"))
 
         buttons_row.addWidget(self.auto_dust_btn)
         buttons_row.addWidget(self.pick_dust_btn)

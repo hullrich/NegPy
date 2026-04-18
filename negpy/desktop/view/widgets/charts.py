@@ -12,6 +12,8 @@ from PyQt6.QtGui import (
 )
 from PyQt6.QtWidgets import QSizePolicy, QWidget
 
+from negpy.desktop.view.styles.theme import THEME
+
 from negpy.kernel.image.logic import get_luminance
 
 _CLIP_THRESH = 0.005  # fraction of pixels considered "clipping"
@@ -402,3 +404,70 @@ class PhotometricCurveWidget(QWidget):
             c = QColor(color)
             c.setAlpha(alpha)
             painter.fillPath(strip, QBrush(c))
+
+
+class MiniHistogramWidget(QWidget):
+    """
+    20px-tall luminance strip shown behind the Exposure section header.
+    Reuses HistogramWidget._normalize; draws only the L channel at ~40% opacity.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self._data_l: list = []
+        self._clip_low: bool = False
+        self._clip_high: bool = False
+
+    def update_data(self, buffer: Any) -> None:
+        if buffer is None or not isinstance(buffer, np.ndarray):
+            self._data_l = []
+            self._clip_low = False
+            self._clip_high = False
+            self.update()
+            return
+        if buffer.shape == (4, 256):
+            max_val = float(np.max(buffer[3]))
+            self._data_l = (buffer[3].astype(float) / max_val).tolist() if max_val > 0 else []
+            total = float(buffer[3].sum())
+            if total > 0:
+                self._clip_low = float(buffer[3, 0:3].sum()) / total > _CLIP_THRESH
+                self._clip_high = float(buffer[3, 253:256].sum()) / total > _CLIP_THRESH
+            else:
+                self._clip_low = False
+                self._clip_high = False
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        if not self._data_l:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        w = self.width()
+        h = self.height()
+
+        path = QPainterPath()
+        path.moveTo(0, h)
+        step = w / (len(self._data_l) - 1)
+        for i, val in enumerate(self._data_l):
+            path.lineTo(i * step, h - val * h)
+        path.lineTo(w, h)
+        path.closeSubpath()
+
+        c = QColor(THEME.text_muted)
+        c.setAlpha(100)  # ~40% opacity
+        painter.setBrush(QBrush(c))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawPath(path)
+
+        # Clipping indicators: 3px vertical strip, full height
+        painter.setPen(Qt.PenStyle.NoPen)
+        if self._clip_low:
+            shadow_color = QColor(80, 140, 220, 180)
+            painter.setBrush(QBrush(shadow_color))
+            painter.drawRect(0, 0, 3, h)
+        if self._clip_high:
+            highlight_color = QColor(220, 80, 80, 180)
+            painter.setBrush(QBrush(highlight_color))
+            painter.drawRect(w - 3, 0, 3, h)

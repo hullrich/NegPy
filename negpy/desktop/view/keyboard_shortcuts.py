@@ -102,6 +102,11 @@ def setup_keyboard_shortcuts(window) -> None:
         lambda: adjust(controls.geometry_sidebar.offset_slider, 1.0),
     )
 
+    # View / Zoom
+    QShortcut(QKeySequence("0"), window, window.canvas.fit_to_window)
+    QShortcut(QKeySequence("1"), window, lambda: controller.zoom_requested.emit(1.0))
+    QShortcut(QKeySequence("2"), window, lambda: controller.zoom_requested.emit(2.0))
+
     # Actions
     QShortcut(QKeySequence("Ctrl+E"), window, controller.request_export)
     QShortcut(QKeySequence("Ctrl+C"), window, controller.session.copy_settings)

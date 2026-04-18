@@ -1,10 +1,11 @@
 import qtawesome as qta
-from PyQt6.QtCore import QSize, Qt
+from PyQt6.QtCore import QEvent, QSize, Qt
 from PyQt6.QtWidgets import (
     QButtonGroup,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QPushButton,
     QSlider,
     QToolButton,
@@ -60,13 +61,10 @@ class ActionToolbar(QWidget):
         """)
         v_layout = QVBoxLayout(container)
         v_layout.setContentsMargins(6, 4, 6, 4)
-        v_layout.setSpacing(8)
+        v_layout.setSpacing(0)
 
-        row1_layout = QHBoxLayout()
-        row1_layout.setSpacing(10)
-
-        row2_layout = QHBoxLayout()
-        row2_layout.setSpacing(10)
+        row_layout = QHBoxLayout()
+        row_layout.setSpacing(6)
 
         icon_color = THEME.text_primary
         icon_size = QSize(16, 16)
@@ -75,36 +73,34 @@ class ActionToolbar(QWidget):
         # 1. Navigation
         self.btn_prev = QToolButton()
         self.btn_prev.setIcon(qta.icon("fa5s.chevron-left", color=icon_color))
+        self.btn_prev.setToolTip("Previous")
         self.btn_next = QToolButton()
         self.btn_next.setIcon(qta.icon("fa5s.chevron-right", color=icon_color))
+        self.btn_next.setToolTip("Next")
 
-        # 2. History
-        self.btn_undo = QPushButton(" Undo")
-        self.btn_undo.setIcon(qta.icon("fa5s.arrow-left", color=icon_color))
-        self.btn_undo.setToolTip("Undo (Ctrl+Z)")
-        self.btn_redo = QPushButton(" Redo")
-        self.btn_redo.setIcon(qta.icon("fa5s.arrow-right", color=icon_color))
-        self.btn_redo.setToolTip("Redo (Ctrl+Y)")
+        # (kept as internal state holders — not added to layout)
+        self.btn_undo = QPushButton()
+        self.btn_redo = QPushButton()
+        self.btn_copy = QPushButton()
+        self.btn_paste = QPushButton()
+        self.btn_reset = QPushButton()
+        self.btn_unload = QPushButton()
 
-        # 3. Geometry
+        # 2. Geometry
         self.btn_rot_l = QToolButton()
         self.btn_rot_l.setIcon(qta.icon("fa5s.undo", color=icon_color))
+        self.btn_rot_l.setToolTip("Rotate CCW  [")
         self.btn_rot_r = QToolButton()
         self.btn_rot_r.setIcon(qta.icon("fa5s.redo", color=icon_color))
+        self.btn_rot_r.setToolTip("Rotate CW  ]")
         self.btn_flip_h = QToolButton()
         self.btn_flip_h.setIcon(qta.icon("fa5s.arrows-alt-h", color=icon_color))
+        self.btn_flip_h.setToolTip("Flip Horizontal  H")
         self.btn_flip_v = QToolButton()
         self.btn_flip_v.setIcon(qta.icon("fa5s.arrows-alt-v", color=icon_color))
+        self.btn_flip_v.setToolTip("Flip Vertical  V")
 
-        # 4. Clipboard
-        self.btn_copy = QPushButton(" Copy")
-        self.btn_copy.setIcon(qta.icon("fa5s.copy", color=icon_color))
-        self.btn_paste = QPushButton(" Paste")
-        self.btn_paste.setIcon(qta.icon("fa5s.paste", color=icon_color))
-        self.btn_reset = QPushButton(" Reset")
-        self.btn_reset.setIcon(qta.icon("fa5s.history", color=icon_color))
-
-        # 5. Zoom
+        # 3. Zoom
         self.zoom_slider = QSlider(Qt.Orientation.Horizontal)
         self.zoom_slider.setRange(25, 400)
         self.zoom_slider.setValue(100)
@@ -118,7 +114,7 @@ class ActionToolbar(QWidget):
         self.btn_hq.setCheckable(True)
         self.btn_hq.setToolTip("Toggle High Quality Preview")
 
-        # Canvas background color swatches
+        # 4. Canvas background swatches
         self.canvas_color_btns: list[QToolButton] = []
         self.canvas_color_group = QButtonGroup(self)
         self.canvas_color_group.setExclusive(True)
@@ -140,68 +136,98 @@ class ActionToolbar(QWidget):
                     border: 1px solid #888;
                 }}
             """)
+            btn.installEventFilter(self)
             self.canvas_color_group.addButton(btn, i)
             self.canvas_color_btns.append(btn)
         self.canvas_color_btns[self.session.state.canvas_bg_index].setChecked(True)
 
-        # 6. Session
+        # 5. Save / Export
         self.btn_save = QPushButton(" Save")
         self.btn_save.setIcon(qta.icon("fa5s.save", color=icon_color))
+
         self.btn_export = QPushButton(" Export")
         self.btn_export.setObjectName("export_btn")
         self.btn_export.setIcon(qta.icon("fa5s.check-circle", color="white"))
-        self.btn_unload = QPushButton(" Unload")
-        self.btn_unload.setIcon(qta.icon("fa5s.times-circle", color=icon_color))
+        self.btn_export.setToolTip("Export  Ctrl+E")
+        self.btn_export.setFixedHeight(36)
 
-        all_buttons = [
+        # 6. Overflow menu
+        self.btn_overflow = QToolButton()
+        self.btn_overflow.setIcon(qta.icon("fa5s.ellipsis-h", color=icon_color))
+        self.btn_overflow.setToolTip("More actions")
+        self.btn_overflow.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+
+        overflow_menu = QMenu(self.btn_overflow)
+        self._action_undo = overflow_menu.addAction(qta.icon("fa5s.arrow-left", color=icon_color), "Undo  Ctrl+Z", self.session.undo)
+        self._action_redo = overflow_menu.addAction(qta.icon("fa5s.arrow-right", color=icon_color), "Redo  Ctrl+Y", self.session.redo)
+        overflow_menu.addSeparator()
+        self._action_copy = overflow_menu.addAction(
+            qta.icon("fa5s.copy", color=icon_color), "Copy Settings  Ctrl+C", self.session.copy_settings
+        )
+        self._action_paste = overflow_menu.addAction(
+            qta.icon("fa5s.paste", color=icon_color), "Paste Settings  Ctrl+V", self.session.paste_settings
+        )
+        overflow_menu.addSeparator()
+        overflow_menu.addAction(qta.icon("fa5s.history", color=icon_color), "Reset Settings", self.session.reset_settings)
+        overflow_menu.addSeparator()
+        overflow_menu.addAction(qta.icon("fa5s.times-circle", color=icon_color), "Unload", self.session.remove_current_file)
+        self.btn_overflow.setMenu(overflow_menu)
+
+        standard_buttons = [
             self.btn_prev,
             self.btn_next,
-            self.btn_undo,
-            self.btn_redo,
             self.btn_rot_l,
             self.btn_rot_r,
             self.btn_flip_h,
             self.btn_flip_v,
-            self.btn_copy,
-            self.btn_paste,
-            self.btn_reset,
             self.btn_save,
-            self.btn_export,
-            self.btn_unload,
             self.btn_hq,
+            self.btn_overflow,
         ]
-
-        for btn in all_buttons:
+        for btn in standard_buttons:
             btn.setIconSize(icon_size)
             btn.setFixedHeight(btn_height)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        row1_layout.addWidget(self.btn_prev)
-        row1_layout.addWidget(self.btn_next)
-        row1_layout.addWidget(self.zoom_slider)
-        row1_layout.addWidget(self.zoom_label)
-        row1_layout.addWidget(self.btn_hq)
+        self.btn_export.setIconSize(icon_size)
+        self.btn_export.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        # Single-row layout: prev · next · sep · zoom+label · hq · swatches · sep · rot_l · rot_r · flip_h · flip_v · sep · save · export · overflow
+        row_layout.addWidget(self.btn_prev)
+        row_layout.addWidget(self.btn_next)
+        row_layout.addWidget(self._create_separator())
+        row_layout.addWidget(self.zoom_slider)
+        row_layout.addWidget(self.zoom_label)
+        row_layout.addWidget(self.btn_hq)
         for btn in self.canvas_color_btns:
-            row1_layout.addWidget(btn)
-        row1_layout.addWidget(self.btn_rot_l)
-        row1_layout.addWidget(self.btn_rot_r)
-        row1_layout.addWidget(self.btn_flip_h)
-        row1_layout.addWidget(self.btn_flip_v)
+            row_layout.addWidget(btn)
+        row_layout.addWidget(self._create_separator())
+        row_layout.addWidget(self.btn_rot_l)
+        row_layout.addWidget(self.btn_rot_r)
+        row_layout.addWidget(self.btn_flip_h)
+        row_layout.addWidget(self.btn_flip_v)
+        row_layout.addWidget(self._create_separator())
+        row_layout.addWidget(self.btn_save)
+        row_layout.addWidget(self.btn_export)
+        row_layout.addWidget(self.btn_overflow)
 
-        row2_layout.addWidget(self.btn_undo)
-        row2_layout.addWidget(self.btn_redo)
-        row2_layout.addWidget(self.btn_copy)
-        row2_layout.addWidget(self.btn_paste)
-        row2_layout.addWidget(self.btn_reset)
-        row2_layout.addWidget(self.btn_save)
-        row2_layout.addWidget(self.btn_export)
-        row2_layout.addWidget(self.btn_unload)
-
-        # Add rows to the vertical layout container
-        v_layout.addLayout(row1_layout)
-        v_layout.addLayout(row2_layout)
-
+        v_layout.addLayout(row_layout)
         main_layout.addWidget(container)
+
+    def eventFilter(self, obj, event) -> bool:
+        if obj in self.canvas_color_btns:
+            et = event.type()
+            if et == QEvent.Type.Enter:
+                i = self.canvas_color_btns.index(obj)
+                _, (r, g, b), _ = CANVAS_COLORS[i]
+                if self.controller.canvas:
+                    self.controller.canvas.set_background_color(r, g, b)
+            elif et == QEvent.Type.Leave:
+                idx = self.session.state.canvas_bg_index
+                _, (r, g, b), _ = CANVAS_COLORS[idx]
+                if self.controller.canvas:
+                    self.controller.canvas.set_background_color(r, g, b)
+        return super().eventFilter(obj, event)
 
     def _connect_signals(self) -> None:
         self.btn_prev.clicked.connect(self.session.prev_file)
@@ -211,25 +237,16 @@ class ActionToolbar(QWidget):
         self.btn_rot_r.clicked.connect(lambda: self.rotate(-1))
         self.btn_flip_h.clicked.connect(lambda: self.flip("horizontal"))
         self.btn_flip_v.clicked.connect(lambda: self.flip("vertical"))
-        self.btn_undo.clicked.connect(self.session.undo)
-        self.btn_redo.clicked.connect(self.session.redo)
 
-        self.btn_copy.clicked.connect(self.session.copy_settings)
-        self.btn_paste.clicked.connect(self.session.paste_settings)
         self.btn_save.clicked.connect(self.controller.save_current_edits)
-        self.btn_reset.clicked.connect(self.session.reset_settings)
-        self.btn_unload.clicked.connect(self.session.remove_current_file)
         self.btn_export.clicked.connect(self.controller.request_export)
 
-        # Canvas color
         self.canvas_color_group.idToggled.connect(self._on_canvas_color_changed)
 
-        # Zoom
         self.zoom_slider.valueChanged.connect(lambda v: self.controller.zoom_requested.emit(float(v / 100.0)))
         self.btn_hq.clicked.connect(self.controller.toggle_hq_preview)
         self.controller.zoom_changed.connect(self._on_zoom_changed)
 
-        # State sync for button enabled/disabled
         self.session.state_changed.connect(self._update_ui_state)
 
     def _on_canvas_color_changed(self, idx: int, checked: bool) -> None:
@@ -271,9 +288,8 @@ class ActionToolbar(QWidget):
         state = self.session.state
         self.btn_prev.setEnabled(state.selected_file_idx > 0)
         self.btn_next.setEnabled(state.selected_file_idx < len(state.uploaded_files) - 1)
-        self.btn_unload.setEnabled(state.selected_file_idx >= 0)
-        self.btn_paste.setEnabled(state.clipboard is not None)
-
-        self.btn_undo.setEnabled(state.undo_index > 0)
-        self.btn_redo.setEnabled(state.undo_index < state.max_history_index)
         self.btn_hq.setChecked(state.hq_preview)
+
+        self._action_undo.setEnabled(state.undo_index > 0)
+        self._action_redo.setEnabled(state.undo_index < state.max_history_index)
+        self._action_paste.setEnabled(state.clipboard is not None)

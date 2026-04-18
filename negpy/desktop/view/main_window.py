@@ -18,6 +18,7 @@ from negpy.desktop.view.sidebar.session_panel import SessionPanel
 from negpy.desktop.view.sidebar.controls_panel import ControlsPanel
 from negpy.desktop.view.widgets.status_bar import TopStatusBar
 from negpy.desktop.view.widgets.overlays import ImageMetadataPanel
+from negpy.desktop.view.widgets.toast import Toast
 from negpy.desktop.view.keyboard_shortcuts import setup_keyboard_shortcuts
 from negpy.desktop.controller import AppController
 from negpy.desktop.session import ToolMode
@@ -39,12 +40,12 @@ class MainWindow(QMainWindow):
         self.controller = controller
         self.state = controller.state
 
-        self.setWindowTitle("NegPy")
         self.resize(1400, 900)
 
         self._init_ui()
         self._connect_signals()
         setup_keyboard_shortcuts(self)
+        self._update_title()
 
     def _init_ui(self) -> None:
         """Setup widgets and layout."""
@@ -63,6 +64,7 @@ class MainWindow(QMainWindow):
         self.metadata_bottom = ImageMetadataPanel()
 
         self.controller.register_canvas(self.canvas)
+        self.canvas.set_controller(self.controller)
         self.toolbar = ActionToolbar(self.controller)
 
         self.central_layout.addWidget(self.top_status)
@@ -95,8 +97,20 @@ class MainWindow(QMainWindow):
         self.setStatusBar(QStatusBar())
         self.statusBar().hide()
 
+        self.toast = Toast(self)
+
+    def _update_title(self) -> None:
+        state = self.controller.session.state
+        if state.current_file_path:
+            filename = os.path.basename(state.current_file_path)
+            prefix = "● " if state.is_dirty else ""
+            self.setWindowTitle(f"{prefix}NegPy — {filename}")
+        else:
+            self.setWindowTitle("NegPy")
+
     def _connect_signals(self) -> None:
         """Wire controller and view."""
+        self.controller.session.state_changed.connect(self._update_title)
         self.controller.image_updated.connect(self._on_image_updated)
         self.controller.loading_started.connect(self.canvas.clear)
 
@@ -109,12 +123,14 @@ class MainWindow(QMainWindow):
 
         self.controller.export_progress.connect(self._on_export_progress)
         self.controller.export_finished.connect(self._on_export_finished)
+        self.controller.session.settings_copied.connect(lambda: self.toast.show_text("Settings copied"))
+        self.controller.session.settings_pasted.connect(lambda: self.toast.show_text("Settings pasted"))
         self.controller.tool_sync_requested.connect(self._sync_tool_buttons)
         self.controller.config_updated.connect(self.canvas.overlay.update)
 
         self.controller.status_message_requested.connect(self.top_status.showMessage)
         self.controller.status_progress_requested.connect(self.top_status.set_progress)
-        self.controller.pixel_readout.connect(self.top_status.set_pixel_readout)
+        self.controller.pixel_readout.connect(self.canvas.pixel_readout_overlay.set_values)
 
         self.dash_timer = QTimer(self)
         self.dash_timer.timeout.connect(self._refresh_dashboard)
@@ -122,11 +138,16 @@ class MainWindow(QMainWindow):
         self._refresh_dashboard()
 
     def _refresh_dashboard(self) -> None:
+        from negpy.desktop.view.styles.theme import THEME
+
+        header = self.session_panel.header
         if self.state.gpu_enabled:
             backend = self.controller.render_worker.processor.backend_name
-            self.top_status.set_gpu_info(backend, active=True)
+            header.gpu_badge.setText(backend.upper())
+            header.gpu_badge.setStyleSheet(f"color: {THEME.accent_primary}; font-size: 11px; font-weight: bold;")
         else:
-            self.top_status.set_gpu_info("CPU", active=False)
+            header.gpu_badge.setText("CPU")
+            header.gpu_badge.setStyleSheet(f"color: {THEME.text_muted}; font-size: 11px; font-weight: bold;")
 
     def _on_image_updated(self) -> None:
         """Refreshes canvas when a new render pass completes."""
@@ -187,7 +208,12 @@ class MainWindow(QMainWindow):
 
     def _on_export_finished(self, elapsed: float) -> None:
         self.top_status.progress.setVisible(False)
-        self.top_status.showMessage(f"Export Complete in {elapsed:.2f}s", 5000)
+        self.toast.show_text(f"Export complete in {elapsed:.2f}s", duration_ms=3000)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if hasattr(self, "toast"):
+            self.toast._reposition()
 
     def _sync_tool_buttons(self) -> None:
         """Updates toggle button states to match active_tool."""

@@ -11,6 +11,7 @@ from negpy.desktop.view.styles.theme import THEME
 from negpy.desktop.view.sidebar.base import BaseSidebar
 from negpy.desktop.session import ToolMode
 from negpy.domain.models import AspectRatio
+from negpy.desktop.view.shortcut_registry import tooltip_with_shortcut
 
 
 class GeometrySidebar(BaseSidebar):
@@ -35,6 +36,7 @@ class GeometrySidebar(BaseSidebar):
         self.manual_crop_btn = QPushButton(" Manual")
         self.manual_crop_btn.setCheckable(True)
         self.manual_crop_btn.setIcon(qta.icon("fa5s.crop-alt", color=THEME.text_primary))
+        self.manual_crop_btn.setToolTip(tooltip_with_shortcut("Manual crop", "manual_crop"))
 
         self.reset_crop_btn = QPushButton(" Auto")
         self.reset_crop_btn.setIcon(qta.icon("fa5s.magic", color=THEME.text_primary))
@@ -53,7 +55,7 @@ class GeometrySidebar(BaseSidebar):
             precision=1,
             unit=" px",
         )
-        self.offset_slider.setToolTip("Insets the crop border from the auto-detected film edge (px)")
+        self.offset_slider.setToolTip(tooltip_with_shortcut("Insets the crop border from the auto-detected film edge (px)", "offset_inc"))
         self.fine_rot_slider = CompactSlider("Fine Rot", -5.0, 5.0, conf.fine_rotation, unit="°")
         self.fine_rot_slider.setToolTip("Fine-tunes rotation to correct slight tilt (degrees)")
         slider_row.addWidget(self.offset_slider)

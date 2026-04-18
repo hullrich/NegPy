@@ -1,14 +1,18 @@
-from typing import Optional, Tuple, Any
+from typing import TYPE_CHECKING, Optional, Tuple, Any
 import sys
-from PyQt6.QtWidgets import QWidget, QStackedLayout
+from PyQt6.QtWidgets import QWidget, QStackedLayout, QMenu
 from PyQt6.QtGui import QPainter, QColor, QMouseEvent
 from PyQt6.QtCore import pyqtSignal, Qt, QPointF
 from negpy.desktop.session import ToolMode, AppState
 from negpy.desktop.view.canvas.gpu_widget import GPUCanvasWidget
 from negpy.desktop.view.canvas.overlay import CanvasOverlay
+from negpy.desktop.view.canvas.pixel_readout import PixelReadoutOverlay
 from negpy.infrastructure.gpu.device import GPUDevice
 from negpy.infrastructure.gpu.resources import GPUTexture
 from negpy.kernel.system.logging import get_logger
+
+if TYPE_CHECKING:
+    from negpy.desktop.controller import AppController
 
 logger = get_logger(__name__)
 
@@ -27,6 +31,7 @@ class ImageCanvas(QWidget):
     def __init__(self, state: AppState, parent=None):
         super().__init__(parent)
         self.state = state
+        self._controller: Optional["AppController"] = None
         self.setMouseTracking(True)
 
         if sys.platform == "win32":
@@ -66,14 +71,47 @@ class ImageCanvas(QWidget):
         self.overlay.cursor_moved.connect(self.cursor_position_changed.emit)
         self.overlay.cursor_left.connect(self.cursor_left_canvas.emit)
 
+        # Pixel readout overlay — absolute child, not in layout
+        self.pixel_readout_overlay = PixelReadoutOverlay(self)
+        self.pixel_readout_overlay.raise_()
+
+        self.cursor_position_changed.connect(lambda x, y: self.pixel_readout_overlay.setVisible(True))
+        self.cursor_left_canvas.connect(lambda: self.pixel_readout_overlay.setVisible(False))
+
     def set_tool_mode(self, mode: ToolMode) -> None:
         self.overlay.set_tool_mode(mode)
+
+    def set_controller(self, controller: "AppController") -> None:
+        self._controller = controller
 
     def set_zoom(self, zoom: float) -> None:
         """Sets zoom level directly (from toolbar)."""
         self.zoom_level = max(0.25, min(zoom, 4.0))
         if self.zoom_level <= 1.0:
             self.pan_offset = QPointF(0, 0)
+        self._sync_transform()
+
+    def fit_to_window(self) -> None:
+        """Fit image to the visible viewport (zoom to fill, reset pan)."""
+        metrics = self.state.last_metrics
+        buf = metrics.get("base_positive")
+        if buf is None:
+            self.set_zoom(1.0)
+            return
+        import numpy as np
+
+        if isinstance(buf, np.ndarray):
+            img_h, img_w = buf.shape[:2]
+        elif isinstance(buf, GPUTexture):
+            img_w, img_h = buf.width, buf.height
+        else:
+            self.set_zoom(1.0)
+            return
+        vw, vh = max(1, self.width()), max(1, self.height())
+        zoom = min(vw / max(1, img_w), vh / max(1, img_h))
+        zoom = max(0.25, min(zoom, 4.0))
+        self.zoom_level = zoom
+        self.pan_offset = QPointF(0, 0)
         self._sync_transform()
 
     def set_background_color(self, r: float, g: float, b: float) -> None:
@@ -123,12 +161,26 @@ class ImageCanvas(QWidget):
         return None
 
     def wheelEvent(self, event) -> None:
-        """Handles zooming centered on the mouse cursor."""
+        """Handles zooming anchored on the mouse cursor position."""
         delta = event.angleDelta().y()
         zoom_factor = 1.1 if delta > 0 else 0.9
 
-        self.zoom_level = max(0.25, min(self.zoom_level * zoom_factor, 4.0))
+        old_zoom = self.zoom_level
+        new_zoom = max(0.25, min(old_zoom * zoom_factor, 4.0))
 
+        if new_zoom > 1.0 and old_zoom > 0:
+            # Cursor offset from widget center, in normalized units [-0.5, 0.5]
+            cursor = event.position()
+            dx = cursor.x() / max(1, self.width()) - 0.5
+            dy = cursor.y() / max(1, self.height()) - 0.5
+            # Adjust pan so the image point under cursor stays fixed
+            k = new_zoom / old_zoom
+            self.pan_offset = QPointF(
+                self.pan_offset.x() * k - dx * (k - 1),
+                self.pan_offset.y() * k - dy * (k - 1),
+            )
+
+        self.zoom_level = new_zoom
         if self.zoom_level <= 1.0:
             self.pan_offset = QPointF(0, 0)
 
@@ -197,5 +249,27 @@ class ImageCanvas(QWidget):
     def update_overlay(self, filename: str, res: str, colorspace: str, extra: str, edits: int = 0) -> None:
         self.overlay.update_overlay(filename, res, colorspace, extra, edits)
 
+    def contextMenuEvent(self, event) -> None:
+        if self.state.selected_file_idx < 0 or self._controller is None:
+            event.ignore()
+            return
+
+        menu = QMenu(self)
+        act_wb = menu.addAction("Pick WB  Shift+W")
+        act_wb.triggered.connect(lambda: self._controller.set_active_tool(ToolMode.WB_PICK))  # type: ignore[union-attr]
+        act_dust = menu.addAction("Pick Dust  Shift+D")
+        act_dust.triggered.connect(lambda: self._controller.set_active_tool(ToolMode.DUST_PICK))  # type: ignore[union-attr]
+        menu.addSeparator()
+        act_copy = menu.addAction("Copy Settings  Ctrl+C")
+        act_copy.triggered.connect(self._controller.session.copy_settings)  # type: ignore[union-attr]
+        act_paste = menu.addAction("Paste Settings  Ctrl+V")
+        act_paste.triggered.connect(self._controller.session.paste_settings)  # type: ignore[union-attr]
+        act_paste.setEnabled(self.state.clipboard is not None)
+        menu.addSeparator()
+        act_reset = menu.addAction("Reset View")
+        act_reset.triggered.connect(self.fit_to_window)
+        menu.exec(event.globalPos())
+
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
+        self.pixel_readout_overlay._reposition()

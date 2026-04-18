@@ -59,6 +59,9 @@ class AppState:
     undo_index: int = 0
     max_history_index: int = 0
 
+    # Dirty flag: True when explicit persist=True edits have been made since last file open/switch
+    is_dirty: bool = False
+
 
 class AssetListModel(QAbstractListModel):
     """
@@ -143,14 +146,24 @@ class DesktopSessionManager(QObject):
     state_changed = pyqtSignal()
     history_changed = pyqtSignal()  # Emitted when undo/redo/persist happens
     settings_saved = pyqtSignal()
+    settings_copied = pyqtSignal()
+    settings_pasted = pyqtSignal()
     file_selected = pyqtSignal(str)  # Emits file path when active file changes
+
+    @property
+    def _config_dirty(self) -> bool:
+        return self.state.is_dirty
+
+    @_config_dirty.setter
+    def _config_dirty(self, value: bool) -> None:
+        self.state.is_dirty = value
 
     def __init__(self, repo: StorageRepository):
         super().__init__()
         self.repo = repo
         self.state = AppState()
         self.asset_model = AssetListModel(self.state)
-        self._config_dirty = False  # True only after an explicit persist=True edit
+        # is_dirty initialised to False via AppState default
 
         # Load global hardware settings
         saved_gpu = self.repo.get_global_setting("gpu_enabled")
@@ -490,12 +503,14 @@ class DesktopSessionManager(QObject):
 
         self.state.clipboard = copy.deepcopy(self.state.config)
         self.state_changed.emit()
+        self.settings_copied.emit()
 
     def paste_settings(self) -> None:
         if self.state.clipboard and self.state.current_file_hash:
             import copy
 
             self.update_config(copy.deepcopy(self.state.clipboard))
+            self.settings_pasted.emit()
 
     def add_files(self, file_paths: List[str], validated_info: Optional[List[Dict]] = None) -> None:
         """

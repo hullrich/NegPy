@@ -9,6 +9,7 @@ from negpy.desktop.session import ToolMode
 from negpy.desktop.view.sidebar.base import BaseSidebar
 from negpy.desktop.view.styles.theme import THEME
 from negpy.desktop.view.widgets.sliders import CompactSlider
+from negpy.desktop.view.shortcut_registry import tooltip_with_shortcut
 
 
 class ExposureSidebar(BaseSidebar):
@@ -43,10 +44,12 @@ class ExposureSidebar(BaseSidebar):
         self.cyan_slider.setToolTip("Cyan–Red white balance shift; applies to the selected region (Global/Shadows/Highlights)")
         self.magenta_slider = CompactSlider("Magenta", -1.0, 1.0, conf.wb_magenta, color="#b100b1", has_neutral=True)
         self.magenta_slider.slider.setObjectName("magenta_slider")
-        self.magenta_slider.setToolTip("Magenta–Green white balance shift; applies to the selected region")
+        self.magenta_slider.setToolTip(
+            tooltip_with_shortcut("Magenta–Green white balance shift; applies to the selected region  E/D", None)
+        )
         self.yellow_slider = CompactSlider("Yellow", -1.0, 1.0, conf.wb_yellow, color="#b1b100", has_neutral=True)
         self.yellow_slider.slider.setObjectName("yellow_slider")
-        self.yellow_slider.setToolTip("Yellow–Blue white balance shift; applies to the selected region")
+        self.yellow_slider.setToolTip(tooltip_with_shortcut("Yellow–Blue white balance shift; applies to the selected region  R/F", None))
         self.layout.addWidget(self.cyan_slider)
         self.layout.addWidget(self.magenta_slider)
         self.layout.addWidget(self.yellow_slider)
@@ -56,6 +59,7 @@ class ExposureSidebar(BaseSidebar):
         self.pick_wb_btn.setCheckable(True)
         self.pick_wb_btn.setIcon(qta.icon("fa5s.eye-dropper", color=THEME.text_primary))
         self.pick_wb_btn.setStyleSheet(f"font-size: {THEME.font_size_base}px; padding: 8px;")
+        self.pick_wb_btn.setToolTip(tooltip_with_shortcut("Pick white balance from canvas", "pick_wb"))
 
         self.camera_wb_btn = QPushButton(" Camera WB")
         self.camera_wb_btn.setCheckable(True)
@@ -68,9 +72,9 @@ class ExposureSidebar(BaseSidebar):
         self.layout.addLayout(wb_btn_row)
 
         self.density_slider = CompactSlider("Density", 0.0, 2.0, conf.density)
-        self.density_slider.setToolTip("Overall exposure — higher values darken the print (more density in the negative)")
+        self.density_slider.setToolTip(tooltip_with_shortcut("Overall exposure — higher values darken the print", "density_up"))
         self.grade_slider = CompactSlider("Grade", 0.0, 5.0, conf.grade)
-        self.grade_slider.setToolTip("Contrast grade: 0 = soft, 5 = very hard (controls sigmoid steepness)")
+        self.grade_slider.setToolTip(tooltip_with_shortcut("Contrast grade: 0 = soft, 5 = very hard", "grade_up"))
 
         self.layout.addWidget(self.density_slider)
         self.layout.addWidget(self.grade_slider)

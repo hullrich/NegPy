@@ -4,6 +4,9 @@ import numpy as np
 import rawpy
 
 from negpy.infrastructure.loaders.constants import SUPPORTED_RAW_EXTENSIONS
+from negpy.kernel.system.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class NonStandardFileWrapper:
@@ -34,22 +37,36 @@ class NonStandardFileWrapper:
 
 def get_best_demosaic_algorithm(raw: Any) -> Any:
     """
-    Selects optimal demosaicing algorithm based on sensor type.
+    Selects optimal demosaicing algorithm based on sensor type and CFA pattern.
+    Exclusively uses algorithms packaged in the standard permissive (LGPL) rawpy build.
     """
+    selected_algo = rawpy.DemosaicAlgorithm.LINEAR
+
+    if isinstance(raw, NonStandardFileWrapper):
+        return selected_algo
+
     try:
-        if raw.raw_type == rawpy.RawType.XTrans:
-            return rawpy.DemosaicAlgorithm.XT_3PASS
+        # Stacked sensors (Linear DNG, Foveon, sRAW)
+        if raw.raw_type == rawpy.RawType.Stack:
+            selected_algo = rawpy.DemosaicAlgorithm.LINEAR
 
-        elif raw.raw_type == rawpy.RawType.Bayer:
-            if hasattr(rawpy.DemosaicAlgorithm, "AMAZE") and rawpy.DemosaicAlgorithm.AMAZE.isSupported:
-                return rawpy.DemosaicAlgorithm.AMAZE
-            return rawpy.DemosaicAlgorithm.DHT
+        # Flat sensors (Bayer, X-Trans)
+        elif raw.raw_type == rawpy.RawType.Flat:
+            cfa_block_size = raw.raw_pattern.shape[0]
 
-        else:
-            return rawpy.DemosaicAlgorithm.LINEAR
+            if cfa_block_size == 6:
+                # 6x6 block means it's a Fujifilm X-Trans sensor.
+                selected_algo = rawpy.DemosaicAlgorithm.VNG
 
-    except Exception:
-        return rawpy.DemosaicAlgorithm.LINEAR
+            elif cfa_block_size == 2:
+                # 2x2 block means it's a standard Bayer sensor (Canon, Nikon, Sony, etc.)
+                selected_algo = rawpy.DemosaicAlgorithm.AHD
+
+    except Exception as e:
+        logger.exception(f"Failed to determine sensor CFA pattern: {e}. Falling back to LINEAR.")
+        selected_algo = rawpy.DemosaicAlgorithm.LINEAR
+
+    return selected_algo
 
 
 def get_supported_raw_wildcards() -> str:

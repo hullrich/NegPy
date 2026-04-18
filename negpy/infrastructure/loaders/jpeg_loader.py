@@ -1,9 +1,11 @@
-import numpy as np
-import imageio.v3 as iio
 from typing import Any, ContextManager, Tuple
+
+import imageio.v3 as iio
+import numpy as np
+
 from negpy.domain.interfaces import IImageLoader
-from negpy.kernel.image.logic import uint8_to_float32
 from negpy.infrastructure.loaders.helpers import NonStandardFileWrapper
+from negpy.kernel.image.logic import uint8_to_float32
 
 
 class JpegLoader(IImageLoader):
@@ -23,5 +25,5 @@ class JpegLoader(IImageLoader):
         else:
             f32 = np.clip(img.astype(np.float32) / 255.0, 0, 1)
 
-        metadata = {"orientation": 0, "color_space": "sRGB"}
+        metadata = {"orientation": 0, "color_space": "Adobe RGB"}
         return NonStandardFileWrapper(f32), metadata

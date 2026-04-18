@@ -71,11 +71,13 @@ QPushButton#export_btn, QPushButton#batch_export_btn {
     color: #FFFFFF;
     font-weight: bold;
     border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.18);
 }
 
 QPushButton#export_btn:hover, QPushButton#batch_export_btn:hover {
     background-color: #C62828;
 }
+
 
 QToolButton {
     background-color: transparent;

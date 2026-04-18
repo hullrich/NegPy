@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QProgressBar, QFrame
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QProgressBar, QSizePolicy
 from PyQt6.QtCore import QTimer
 from negpy.desktop.view.styles.theme import THEME
 
@@ -25,58 +25,29 @@ class TopStatusBar(QWidget):
         layout.setContentsMargins(12, 0, 12, 0)
         layout.setSpacing(16)
 
-        # Left: Activity
         self.msg_label = QLabel("Ready")
         layout.addWidget(self.msg_label)
 
-        # Center: Progress
+        layout.addStretch()
+
         self.progress = QProgressBar()
-        self.progress.setMaximumWidth(200)
-        self.progress.setFixedHeight(4)
+        self.progress.setFixedHeight(6)
+        self.progress.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.progress.setVisible(False)
         self.progress.setTextVisible(False)
         self.progress.setStyleSheet(f"""
             QProgressBar {{
-                background-color: #121212;
+                background-color: transparent;
                 border: none;
-                border-radius: 2px;
+                border-top: 1px solid {THEME.accent_primary};
+                border-radius: 0;
             }}
             QProgressBar::chunk {{
                 background-color: {THEME.accent_primary};
-                border-radius: 2px;
+                border-radius: 0;
             }}
         """)
-        layout.addStretch()
         layout.addWidget(self.progress)
-        layout.addStretch()
-
-        # Right: System Info
-        self.system_info = QHBoxLayout()
-        self.system_info.setSpacing(12)
-
-        self.rgb_label = QLabel("")
-        self.rgb_label.setStyleSheet(f"color: {THEME.text_muted}; font-family: monospace;")
-        self.lab_label = QLabel("")
-        self.lab_label.setStyleSheet(f"color: {THEME.text_muted}; font-family: monospace;")
-
-        self.gpu_label = QLabel("CPU")
-        self.gpu_label.setStyleSheet(f"color: {THEME.text_muted};")
-
-        self.system_info.addWidget(self.rgb_label)
-        self.system_info.addWidget(self.lab_label)
-        self.system_info.addWidget(self._create_separator())
-        self.system_info.addWidget(self.gpu_label)
-
-        layout.addLayout(self.system_info)
-
-    def _create_separator(self) -> QFrame:
-        line = QFrame()
-        line.setFrameShape(QFrame.Shape.VLine)
-        line.setFrameShadow(QFrame.Shadow.Plain)
-        line.setFixedWidth(1)
-        line.setFixedHeight(12)
-        line.setStyleSheet(f"background-color: {THEME.border_primary}; border: none;")
-        return line
 
     def showMessage(self, text: str, timeout: int = 0):
         if text == "Image Updated":
@@ -84,15 +55,6 @@ class TopStatusBar(QWidget):
         self.msg_label.setText(text.upper())
         if timeout > 0:
             QTimer.singleShot(timeout, lambda: self.msg_label.setText("READY"))
-
-    def set_gpu_info(self, backend: str, active: bool = False):
-        self.gpu_label.setText(backend.upper())
-        color = THEME.accent_primary if active else THEME.text_muted
-        self.gpu_label.setStyleSheet(f"color: {color}; font-weight: bold;")
-
-    def set_pixel_readout(self, rgb_text: str, lab_text: str) -> None:
-        self.rgb_label.setText(rgb_text)
-        self.lab_label.setText(lab_text)
 
     def set_progress(self, current: int, total: int):
         if total <= 0:

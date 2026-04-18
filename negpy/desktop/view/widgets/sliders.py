@@ -7,16 +7,40 @@ from PyQt6.QtWidgets import (
     QSlider,
     QLabel,
     QDoubleSpinBox,
+    QStyle,
+    QStyleOptionSlider,
 )
 from PyQt6.QtGui import QPainter, QColor, QPen
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QRect, QEvent
 from negpy.desktop.view.styles.theme import THEME
 
 
+class _ValueBubble(QLabel):
+    """Floating tooltip displayed above the slider thumb during drag."""
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowFlags(Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setStyleSheet(f"""
+            background-color: {THEME.bg_panel};
+            color: {THEME.accent_primary};
+            border: 1px solid {THEME.border_primary};
+            border-radius: 3px;
+            padding: 3px 6px;
+            font-size: 12px;
+        """)
+        self.setVisible(False)
+
+
 class _NoScrollSlider(QSlider):
     def __init__(self, *args, default_pos: Optional[float] = None, **kwargs):
         super().__init__(*args, **kwargs)
         self._default_pos = default_pos
+        self._default_slider_value: Optional[int] = None
+        self._drag_anchor_px: Optional[float] = None
+        self._drag_anchor_value: int = 0
 
     def wheelEvent(self, event) -> None:
         if self.hasFocus():
@@ -24,18 +48,46 @@ class _NoScrollSlider(QSlider):
         else:
             event.ignore()
 
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            mods = event.modifiers()
+            if mods & Qt.KeyboardModifier.ControlModifier and self._default_slider_value is not None:
+                self.setValue(self._default_slider_value)
+                self.sliderReleased.emit()
+                event.accept()
+                return
+            self._drag_anchor_px = event.position().x()
+            self._drag_anchor_value = self.value()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        if self.isSliderDown() and self._drag_anchor_px is not None and event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+            usable = max(1, self.width() - 12)
+            rng = self.maximum() - self.minimum()
+            delta_px = event.position().x() - self._drag_anchor_px
+            value_change = int(round(delta_px * 0.1 * rng / usable))
+            new_value = max(self.minimum(), min(self.maximum(), self._drag_anchor_value + value_change))
+            self.setValue(new_value)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        self._drag_anchor_px = None
+        super().mouseReleaseEvent(event)
+
     def paintEvent(self, event) -> None:
         super().paintEvent(event)
         if self._default_pos is None:
             return
         p = QPainter(self)
         groove_y = self.height() // 2
-        handle_w = 12  # matches QSS handle width
+        handle_w = 12
         usable = self.width() - handle_w
         x = handle_w // 2 + int(self._default_pos * usable)
-        pen = QPen(QColor(THEME.text_muted), 1)
+        pen = QPen(QColor(THEME.text_unit), 1)
         p.setPen(pen)
-        p.drawLine(x, groove_y - 4, x, groove_y + 4)
+        p.drawLine(x, groove_y - 1, x, groove_y + 2)
 
 
 class _NoScrollSpinBox(QDoubleSpinBox):
@@ -76,6 +128,7 @@ class BaseSlider(QWidget):
             self.slider.setObjectName("neutral_slider")
         self.slider.setRange(int(min_val * self._precision), int(max_val * self._precision))
         self.slider.setValue(int(default_val * self._precision))
+        self.slider._default_slider_value = int(default_val * self._precision)
 
         self.spin = _NoScrollSpinBox()
         self.spin.setRange(min_val, max_val)
@@ -149,6 +202,7 @@ class BaseSlider(QWidget):
 class CompactSlider(BaseSlider):
     """
     Compact slider with label and value in a header row, slider below.
+    Spin-box is hidden at rest; revealed on hover or keyboard focus.
     """
 
     def __init__(
@@ -166,6 +220,9 @@ class CompactSlider(BaseSlider):
     ):
         super().__init__(min_val, max_val, default_val, precision=precision, has_neutral=has_neutral, parent=parent)
 
+        self._label_color = color if color else THEME.text_secondary
+        self._bubble = _ValueBubble()
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(2, 2, 2, 2)
         layout.setSpacing(2)
@@ -173,7 +230,7 @@ class CompactSlider(BaseSlider):
         header = QHBoxLayout()
         header.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         self.label = QLabel(label)
-        self.label.setStyleSheet(f"font-size: {THEME.font_size_base}px; color: {color if color else THEME.text_secondary};")
+        self.label.setStyleSheet(f"font-size: {THEME.font_size_base}px; color: {self._label_color};")
 
         self.spin.setSingleStep(step)
         if step >= 1.0:
@@ -184,8 +241,10 @@ class CompactSlider(BaseSlider):
         if unit:
             self.spin.setSuffix(unit)
 
+        self._spin_full_width = 60 if unit else 50
         self.spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
-        self.spin.setFixedWidth(60 if unit else 50)
+        self.spin.setMinimumWidth(0)
+        self.spin.setMaximumWidth(0)  # collapsed at rest; expanded on hover/focus
         self.spin.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.spin.setStyleSheet(f"font-size: {THEME.font_size_base}px; background: transparent; border: none; font-weight: bold;")
 
@@ -203,7 +262,63 @@ class CompactSlider(BaseSlider):
         layout.addLayout(header)
         layout.addWidget(self.slider)
 
+        # Show bubble on drag, hide on release
+        self.slider.sliderReleased.connect(self._bubble.hide)
+
+    def enterEvent(self, event) -> None:
+        self.spin.setMaximumWidth(self._spin_full_width)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        if not self.spin.hasFocus():
+            self.spin.setMaximumWidth(0)
+        super().leaveEvent(event)
+
+    def _on_slider_changed(self, value: int) -> None:
+        super()._on_slider_changed(value)
+        self._update_edited_state()
+        if self.slider.isSliderDown():
+            self._show_bubble(value)
+
+    def setValue(self, value: float) -> None:
+        super().setValue(value)
+        self._update_edited_state()
+
+    def _update_edited_state(self) -> None:
+        edited = abs(self.spin.value() - self._default) > 1e-6
+        border = f"border-bottom: 1px solid {THEME.accent_edited};" if edited else ""
+        self.label.setStyleSheet(f"font-size: {THEME.font_size_base}px; color: {self._label_color}; {border}")
+
+    def _show_bubble(self, slider_value: int) -> None:
+        f_val = slider_value / self._precision
+        unit = self.spin.suffix()
+        self._bubble.setText(f"{f_val:.2f}{unit}")
+
+        opt = QStyleOptionSlider()
+        self.slider.initStyleOption(opt)
+        handle_rect = self.slider.style().subControlRect(
+            QStyle.ComplexControl.CC_Slider,
+            opt,
+            QStyle.SubControl.SC_SliderHandle,
+            self.slider,
+        )
+        center = handle_rect.center()
+        global_pos = self.slider.mapToGlobal(center)
+        self._bubble.adjustSize()
+        x = global_pos.x() - self._bubble.width() // 2
+        y = global_pos.y() - self._bubble.height() - 8
+        self._bubble.move(x, y)
+        self._bubble.show()
+
     def eventFilter(self, obj, event) -> bool:
+        if obj is self.spin:
+            et = event.type()
+            if et == QEvent.Type.FocusIn:
+                self.spin.setMaximumWidth(self._spin_full_width)
+            elif et == QEvent.Type.FocusOut:
+                if not self.underMouse():
+                    self.spin.setMaximumWidth(0)
+
         if obj is self.label:
             et = event.type()
             if et == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
@@ -242,13 +357,13 @@ class HueSlider(CompactSlider):
         self.slider.setStyleSheet("""
             QSlider::groove:horizontal {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0.000 hsl(0,80%,50%),
-                    stop:0.167 hsl(60,80%,50%),
-                    stop:0.333 hsl(120,80%,50%),
-                    stop:0.500 hsl(180,80%,50%),
-                    stop:0.667 hsl(240,80%,50%),
-                    stop:0.833 hsl(300,80%,50%),
-                    stop:1.000 hsl(360,80%,50%));
+                    stop:0.000 hsl(0,55%,45%),
+                    stop:0.167 hsl(60,55%,45%),
+                    stop:0.333 hsl(120,55%,45%),
+                    stop:0.500 hsl(180,55%,45%),
+                    stop:0.667 hsl(240,55%,45%),
+                    stop:0.833 hsl(300,55%,45%),
+                    stop:1.000 hsl(360,55%,45%));
                 height: 6px; border-radius: 3px;
             }
             QSlider::handle:horizontal {
@@ -263,7 +378,9 @@ class HueSlider(CompactSlider):
 
     def _update_label_color(self, hue_deg: float) -> None:
         color = QColor.fromHsv(int(hue_deg) % 360, 200, 210)
-        self.label.setStyleSheet(f"font-size: {THEME.font_size_base}px; color: {color.name()};")
+        edited = abs(self.spin.value() - self._default) > 1e-6
+        border = f"border-bottom: 1px solid {THEME.accent_edited};" if edited else ""
+        self.label.setStyleSheet(f"font-size: {THEME.font_size_base}px; color: {color.name()}; {border}")
 
     def _on_slider_changed(self, value: int) -> None:
         super()._on_slider_changed(value)
@@ -331,21 +448,12 @@ class RangeSlider(QWidget):
         painter.setPen(QPen(QColor(THEME.accent_primary), 4))
         painter.drawLine(x1, y, x2, y)
 
-        # Draw Handles
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(THEME.accent_primary))
-        painter.drawEllipse(
-            x1 - self._handle_r,
-            y - self._handle_r,
-            self._handle_r * 2,
-            self._handle_r * 2,
-        )
-        painter.drawEllipse(
-            x2 - self._handle_r,
-            y - self._handle_r,
-            self._handle_r * 2,
-            self._handle_r * 2,
-        )
+        # Draw Handles — filled with accent + 1px dark stroke ring for visibility
+        r = self._handle_r
+        for cx in (x1, x2):
+            painter.setBrush(QColor(THEME.accent_primary))
+            painter.setPen(QPen(QColor("#050505"), 1))
+            painter.drawEllipse(cx - r, y - r, r * 2, r * 2)
 
     def _get_val(self, x: int) -> float:
         w = self.width() - 2 * self._margin
