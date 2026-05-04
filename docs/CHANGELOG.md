@@ -1,5 +1,10 @@
 # Change Log
 
+## 0.17.1
+
+- Fix: new vignette shaders not being bundled with appimage on linux
+- Fix: queue render cleanup on worker thread to prevent use-after-free (GPU)
+
 ## 0.17.0
 
 - Improved default conversion/normalization process, now out-of-the-box results should be better & more natural.
