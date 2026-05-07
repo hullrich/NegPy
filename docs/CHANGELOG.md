@@ -1,5 +1,13 @@
 # Change Log
 
+## 0.18.0
+
+- Added **Interactive Tutorial**: step-by-step overlay walkable from the toolbar, covering the full pipeline from loading files to export.
+- Added **Move Crop** tool: translate an existing manual crop rectangle without resizing it — new button in the Geometry sidebar (disabled until a crop rect is set).
+- Added **Target Pixel Size** export mode: alongside the existing Print DPI and Original Resolution options, you can now export to a specific long-edge pixel count. Old `use_original_res` workspace files are automatically migrated to the new `export_resolution_mode` field.
+- Improved **Autocrop**: more robust edge detection; autocrop is now off by default and resets when the button is deselected. @alessandrv
+- Fix: HQ preview no longer inflates bounds analysis — analysis is always run on the downsampled image, eliminating noise from single dead pixels or sharp dust spots that could throw off normalization. (#162)
+
 ## 0.17.2
 
 - Fix: batch normalization and batch export progress bars now properly updates on status bar.
