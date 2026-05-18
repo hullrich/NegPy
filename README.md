@@ -25,6 +25,7 @@ It is built with **Python**, running natively on Linux, macOS, and Windows.
 *   **Batch Normalization**: Perform bounds analysis for all loaded files and apply averaged settings to all.
 *   **GPU Acceleration**: Real-time processing and export rendering using Vulkan/Metal.
 *   **Dust Removal**: Automatic and manual healing tools with grain synthesis to keep scans clean without looking plastic.
+*   **Scanner Support**: Supports direct interaction with SANE-compatible scanners. [supported devices](http://www.sane-project.org/sane-supported-devices.html)
 *   **File Support**: Supports standard RAWs/TIFFs, and specialized formats like Kodak Pakon scanner raw files.
 *   **Non-destructive**: original files are never touched; edits are stored as recipes.
 *   **Keyboard Shortcuts**: [see here](docs/KEYBOARD.md)
