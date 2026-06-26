@@ -353,16 +353,14 @@ class SaneBackend:
         """Apply hardware-specific optimizations for pieusb scanners."""
         opts = {
             'sharpen': True,
-            'shading-analysis': True,
+            'shading_analysis': True,
             'advance': True,
             'calibration': 'from internal test',
-            'correct-shading': True,
-            'clean-image': False,
-            'correct-infrared': False,
+            'correct_shading': True,
         }
         if capture_ir:
-            opts['clean-image'] = True
-            opts['correct-infrared'] = True
+            opts['clean_image'] = True
+            opts['correct_infrared'] = True
         
         for name, val in opts.items():
             try:
