@@ -352,16 +352,16 @@ class SaneBackend:
     def _set_pieusb_flags(self, dev, capture_ir) -> None:
         """Apply hardware-specific optimizations for pieusb scanners."""
         opts = {
-            'sharpen': True,
-            'shading_analysis': True,
-            'advance': True,
-            'calibration': 'from internal test',
-            'correct_shading': True,
+            "sharpen": True,
+            "shading_analysis": True,
+            "advance": True,
+            "calibration": "from internal test",
+            "correct_shading": True,
         }
         if capture_ir:
-            opts['clean_image'] = True
-            opts['correct_infrared'] = True
-        
+            opts["clean_image"] = True
+            opts["correct_infrared"] = True
+
         for name, val in opts.items():
             try:
                 setattr(dev, name, val)
